@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dan Christian Aguillon</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    input, button { margin: 10px 0; display: block; }
+  body {
+    font-family: Arial, sans-serif;
+    padding: 20px;
+    max-width: 500px;
+    margin: auto;
+    background: #f4f4f4;
+  }
+  
+  h2 {
+    text-align: center;
+    color: #333;
+  }
+  
+  input[type="file"],
+  input[type="password"],
+  button {
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    box-sizing: border-box;
+  }
+  
+  button {
+    background-color: #007BFF;
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  
+  button:hover {
+    background-color: #0056b3;
+  }
+  
+  body, input, button {
+    transition: 0.3s ease all;
+  }
+
+
+  </style>
+</head>
+<body>
+
+<h2>Encrypt/Decrypt File</h2>
+
+<input type="file" id="fileInput">
+<input type="password" id="passwordInput" placeholder="Enter Password">
+<button onclick="encryptFile()">Encrypt</button>
+<button onclick="decryptFile()">Decrypt</button>
+
+<script>
+async function getKey(password, salt) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"]
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt,
+      iterations: 100000,
+      hash: "SHA-256"
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"]
+  );
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function encryptFile() {
+  const fileInput = document.getElementById('fileInput');
+  const passwordInput = document.getElementById('passwordInput');
+  if (!fileInput.files.length || !passwordInput.value) {
+    alert("Please select a file and enter a password.");
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const data = await file.arrayBuffer();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await getKey(passwordInput.value, salt);
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: iv },
+    key,
+    data
+  );
+
+  const blob = new Blob([salt, iv, encrypted], { type: "application/octet-stream" });
+  downloadBlob(blob, file.name + ".enc");
+}
+
+async function decryptFile() {
+  const fileInput = document.getElementById('fileInput');
+  const passwordInput = document.getElementById('passwordInput');
+  if (!fileInput.files.length || !passwordInput.value) {
+    alert("Please select a file and enter a password.");
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const data = await file.arrayBuffer();
+  const bytes = new Uint8Array(data);
+
+  const salt = bytes.slice(0, 16);
+  const iv = bytes.slice(16, 28);
+  const encrypted = bytes.slice(28);
+
+  try {
+    const key = await getKey(passwordInput.value, salt);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: iv },
+      key,
+      encrypted
+    );
+    const blob = new Blob([decrypted]);
+    downloadBlob(blob, file.name.replace('.enc', ''));
+  } catch (e) {
+    alert("Failed to decrypt. Wrong password or corrupted file.");
+  }
+}
+</script>
+
+</body>
+</html>
